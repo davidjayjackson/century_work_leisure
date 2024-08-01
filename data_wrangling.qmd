@@ -1,0 +1,94 @@
+---
+title: "ChatGPT:  Data Wrangling"
+format: html
+editor: visual
+---
+
+## ChatGPT
+
+```{r}
+rm(list=ls())
+
+# Load necessary libraries
+library(tidyverse)
+library(janitor)
+library(duckdb)
+library(DBI)
+# Load the data
+data <- read_csv("./work_leisure.csv") |> remove_empty() |> clean_names()
+```
+
+# Clean column names and shorten them
+```{r}
+data_clean <- data %>%
+  clean_names() %>%
+  rename(
+    entity = entity,
+    year = year,
+    work_hours = average_weekly_hours_worked_per_person_by_demographic_group_ramey_and_francis_2009,
+    school_hours = average_weekly_hours_devoted_to_school_ramey_and_francis_2009,
+    home_prod_hours = weekly_home_production_time_by_demographic_group_ramey_and_francis_2009,
+    leisure_hours = average_weekly_leisure_estimates_by_age_ramey_and_francis_2009
+  )
+
+# Clean the Entity column and create new columns for age and gender
+data_clean <- data_clean %>%
+  mutate(entity = str_trim(entity),  # Remove leading and trailing whitespace
+         entity = str_to_lower(entity),  # Convert to lower case for consistency
+         entity = str_replace_all(entity, "\\s+", " "),  # Replace multiple spaces with a single space
+         age = str_extract(entity, "\\d+"),  # Extract the first number (age)
+         gender = case_when(
+           str_detect(entity, "male") ~ "male",
+           str_detect(entity, "female") ~ "female",
+           TRUE ~ NA_character_  # Handle any unexpected cases
+         ),
+         entity = str_replace(entity, " ages? \\d+.*$", ""),  # Remove age and gender from the entity column
+         age = as.integer(age)  # Convert age to integer
+  )
+# Convert any necessary columns to appropriate data types
+data_clean <- data_clean %>%
+  mutate(year = as.integer(year))
+```
+
+# Handle missing values
+# For example, you might want to replace NA with 0 or some other value
+```{r}
+# data_clean <- data_clean %>%
+#  mutate(across(everything(), ~replace_na(., 0)))
+
+data_clean <- data_clean |> select(entity,age,gender,year:leisure_hours)
+```
+
+# Some Quick Summary Stats
+## Average Hours Worked
+```{r}
+summary(data_clean$work_hours)
+```
+## Average Hours In School
+```{r}
+summary(data_clean$school_hours)
+```
+## Home Production Hours
+```{r}
+summary(data_clean$home_prod_hours)
+```
+## Leisure Hours
+```{r}
+summary(data_clean$leisure_hours)
+```
+```{r}
+# data_clean <- data_clean %>%
+#   mutate(age_start = str_extract(age_gender, "(?<=ages )\\d+"))
+```
+# View the first few rows of the cleaned data
+```{r}
+head(data_clean)
+```
+
+## Create Duckdb Database
+
+```{r}
+con <- dbConnect(duckdb("./work_play.duckdb"))
+duckdb_register(con, "work_hours",data_clean)
+dbWriteTable(con,"work_play",data_clean)
+```
